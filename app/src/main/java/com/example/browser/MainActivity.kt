@@ -3,6 +3,9 @@ package com.example.browser
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.content.SharedPreferences
+import org.json.JSONArray
+import org.json.JSONObject
 import android.os.Bundle
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -23,6 +26,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -33,6 +38,7 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -57,6 +63,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +83,29 @@ private val Ink = Color(0xFF0B1220)
 private val Purple = Color(0xFF7057E8)
 private val SoftPurple = Color(0xFFEDEAFF)
 private val Page = Color(0xFFF6F7FB)
+private const val TabExpiryMs = 24L * 60L * 60L * 1000L
+
+data class BrowserTab(val id: Long, val url: String, val title: String, val lastActive: Long, val inactive: Boolean)
+
+private fun loadTabs(prefs: SharedPreferences): List<BrowserTab> {
+    val now = System.currentTimeMillis()
+    val stored = runCatching { JSONArray(prefs.getString("tabs", "[]")) }.getOrElse { JSONArray() }
+    return (0 until stored.length()).mapNotNull { index ->
+        runCatching {
+            val item = stored.getJSONObject(index)
+            val lastActive = item.optLong("lastActive", now)
+            if (item.optBoolean("inactive", false) && now - lastActive >= TabExpiryMs) null else BrowserTab(item.getLong("id"), item.optString("url"), item.optString("title"), lastActive, item.optBoolean("inactive", false))
+        }.getOrNull()
+    }
+}
+
+private fun saveTabs(prefs: SharedPreferences, tabs: List<BrowserTab>) {
+    val array = JSONArray()
+    tabs.forEach { tab ->
+        array.put(JSONObject().apply { put("id", tab.id); put("url", tab.url); put("title", tab.title); put("lastActive", tab.lastActive); put("inactive", tab.inactive) })
+    }
+    prefs.edit().putString("tabs", array.toString()).apply()
+}
 
 private fun compactUrl(raw: String): String {
     val value = raw.trim()
@@ -133,13 +163,54 @@ private fun BrowserTheme(darkMode: Boolean, content: @Composable () -> Unit) {
 @Composable
 private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Boolean) -> Unit, onEngineChanged: (String) -> Unit) {
     val context = LocalContext.current
-    var address by remember { mutableStateOf("") }
-    var currentUrl by remember { mutableStateOf("") }
+    val prefs = remember { context.getSharedPreferences("browser_settings", android.content.Context.MODE_PRIVATE) }
+    var tabs by remember { mutableStateOf(loadTabs(prefs).ifEmpty { listOf(BrowserTab(System.currentTimeMillis(), "", "New tab", System.currentTimeMillis(), false)) }) }
+    var selectedTabId by remember { mutableStateOf(tabs.first().id) }
+    var address by remember { mutableStateOf(tabs.first().url.takeIf { it.isNotEmpty() }?.let(::compactUrl) ?: "") }
+    var currentUrl by remember { mutableStateOf(tabs.first().url) }
     var isLoading by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showTabs by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
+
+    fun persistTabs() = saveTabs(prefs, tabs)
+    fun updateCurrentTab(url: String, title: String = "") {
+        val now = System.currentTimeMillis()
+        tabs = tabs.map { if (it.id == selectedTabId) it.copy(url = url, title = title.ifBlank { it.title }, lastActive = now, inactive = false) else it }
+        persistTabs()
+    }
+    fun createTab() {
+        val tab = BrowserTab(System.currentTimeMillis(), "", "New tab", System.currentTimeMillis(), false)
+        tabs = tabs + tab
+        selectedTabId = tab.id
+        currentUrl = ""
+        address = ""
+        persistTabs()
+    }
+    fun closeTab(id: Long) {
+        val remaining = tabs.filterNot { it.id == id }
+        tabs = if (remaining.isEmpty()) listOf(BrowserTab(System.currentTimeMillis(), "", "New tab", System.currentTimeMillis(), false)) else remaining
+        if (selectedTabId == id) {
+            val next = tabs.first()
+            selectedTabId = next.id
+            currentUrl = next.url
+            address = next.url.takeIf { it.isNotEmpty() }?.let(::compactUrl) ?: ""
+        }
+        persistTabs()
+    }
+    fun switchTab(tab: BrowserTab) {
+        selectedTabId = tab.id
+        currentUrl = tab.url
+        address = tab.url.takeIf { it.isNotEmpty() }?.let(::compactUrl) ?: ""
+        tabs = tabs.map { if (it.id == tab.id) it.copy(lastActive = System.currentTimeMillis(), inactive = false) else it }
+        persistTabs()
+        showTabs = false
+    }
+    DisposableEffect(Unit) {
+        onDispose { saveTabs(prefs, tabs.map { it.copy(inactive = true) }) }
+    }
 
     fun navigate(input: String) {
         val value = normalizeInput(input)
@@ -151,6 +222,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
         }
         currentUrl = target
         address = compactUrl(target)
+        updateCurrentTab(target)
         webView?.loadUrl(target)
     }
 
@@ -159,9 +231,9 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
         bottomBar = {
             BrowserNavigationBar(
                 webView = webView,
-                currentUrl = currentUrl,
-                onHome = { webView?.stopLoading(); currentUrl = ""; address = "" },
-                onClose = { webView?.stopLoading() }
+                tabCount = tabs.size,
+                onHome = { webView?.stopLoading(); currentUrl = ""; address = ""; updateCurrentTab("") },
+                onTabs = { showTabs = true }
             )
         }
     ) { padding ->
@@ -228,11 +300,13 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
                                     isLoading = true
                                     currentUrl = url
                                     address = compactUrl(url)
+                                    updateCurrentTab(url)
                                 }
                                 override fun onPageFinished(view: WebView, url: String) {
                                     isLoading = false
                                     currentUrl = url
                                     address = compactUrl(url)
+                                    updateCurrentTab(url)
                                 }
                             }
                             webChromeClient = WebChromeClient()
@@ -253,6 +327,10 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
 
     if (showSettings) {
         SettingsDialog(darkMode, engine, onDarkModeChanged, onEngineChanged) { showSettings = false }
+    }
+
+    if (showTabs) {
+        TabOverviewDialog(tabs, selectedTabId, onSelect = ::switchTab, onCloseTab = ::closeTab, onNewTab = { showTabs = false; createTab() }, onDismiss = { showTabs = false })
     }
 
     if (showAbout) {
@@ -323,15 +401,47 @@ private fun SettingsDialog(darkMode: Boolean, engine: String, onDarkModeChanged:
 }
 
 @Composable
-private fun BrowserNavigationBar(webView: WebView?, currentUrl: String, onHome: () -> Unit, onClose: () -> Unit) {
+private fun TabOverviewDialog(tabs: List<BrowserTab>, selectedTabId: Long, onSelect: (BrowserTab) -> Unit, onCloseTab: (Long) -> Unit, onNewTab: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tabs (${tabs.size})") },
+        text = {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                items(tabs, key = { it.id }) { tab ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = if (tab.id == selectedTabId) SoftPurple else MaterialTheme.colorScheme.surfaceVariant),
+                        shape = RoundedCornerShape(16.dp),
+                        onClick = { onSelect(tab) }
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column(Modifier.weight(1f)) {
+                                Text(tab.title.ifBlank { "New tab" }, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(if (tab.url.isBlank()) "New tab" else compactUrl(tab.url), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                            }
+                            IconButton(onClick = { onCloseTab(tab.id) }) { Icon(Icons.Default.Close, "Close tab") }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onNewTab) { Text("New tab") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Done") } }
+    )
+}
+
+@Composable
+private fun BrowserNavigationBar(webView: WebView?, tabCount: Int, onHome: () -> Unit, onTabs: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 5.dp, modifier = Modifier.navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { webView?.goBack() }, enabled = webView?.canGoBack() == true) { Icon(Icons.Default.ArrowBack, "Back", tint = if (webView?.canGoBack() == true) Ink else Color.LightGray) }
             IconButton(onClick = { webView?.goForward() }, enabled = webView?.canGoForward() == true) { Icon(Icons.Default.ArrowForward, "Forward", tint = if (webView?.canGoForward() == true) Ink else Color.LightGray) }
             IconButton(onClick = onHome) { Icon(Icons.Default.Home, "Home", tint = Purple) }
-            Text(if (currentUrl.isEmpty()) "Start" else "Page", color = Color(0xFF6B7280), style = MaterialTheme.typography.labelSmall)
             IconButton(onClick = { webView?.reload() }) { Icon(Icons.Default.Refresh, "Refresh", tint = Ink) }
-            IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Stop", tint = Ink) }
+            Box {
+                IconButton(onClick = onTabs) { Icon(Icons.Default.Layers, "Tabs", tint = Purple) }
+                Text(tabCount.toString(), style = MaterialTheme.typography.labelSmall, color = Purple, modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 2.dp))
+            }
         }
     }
 }
