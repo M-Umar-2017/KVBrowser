@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Browser"
+rootProject.name = "KVB"
 include(":app")

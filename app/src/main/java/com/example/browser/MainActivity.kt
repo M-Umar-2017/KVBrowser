@@ -257,7 +257,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
         AlertDialog(
             onDismissRequest = { showAbout = false },
             title = { Text("About") },
-            text = { Text("A lightweight browser for everyday web browsing.") },
+            text = { Text("KVB is a lightweight browser for everyday web browsing.") },
             confirmButton = { TextButton(onClick = { showAbout = false }) { Text("Done") } }
         )
     }

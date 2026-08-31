@@ -1,11 +1,11 @@
-# Browser
+# KVB
 
 A lightweight Android browser built with Kotlin, Jetpack Compose Material 3, Material Icons, and Android WebView.
 
 ## Included
 
-This repository contains the complete Android source code and the latest compiled APK under `artifacts/`.
+This repository contains the complete Android source code and compiled APK artifacts.
 
 ## Install
 
-Download the APK from the Releases page or from `artifacts/Browser-v1.0.0-debug.apk`, then install it on an Android device. The APK is debug-signed for testing.
+Download the latest APK from the Releases page and install it on an Android device. The APK is debug-signed for testing.
