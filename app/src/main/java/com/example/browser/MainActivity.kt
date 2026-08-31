@@ -166,13 +166,13 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 6.dp, top = 6.dp, bottom = 5.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 4.dp, bottom = 3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
                     value = address,
                     onValueChange = { address = it },
-                    modifier = Modifier.weight(1f).height(54.dp),
+                    modifier = Modifier.weight(1f).height(46.dp),
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium,
                     leadingIcon = { Icon(Icons.Default.Search, "Search", tint = Purple) },
@@ -180,7 +180,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
                         if (address.isNotEmpty()) IconButton(onClick = { address = "" }) { Icon(Icons.Default.Close, "Clear") }
                     },
                     placeholder = { Text("Search or enter address", style = MaterialTheme.typography.bodyMedium) },
-                    shape = RoundedCornerShape(17.dp),
+                    shape = RoundedCornerShape(23.dp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { navigate(address) })
                 )
@@ -265,21 +265,21 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
 
 @Composable
 private fun CompactStartPage(onNavigate: (String) -> Unit) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(shape = CircleShape, color = Ink, modifier = Modifier.height(64.dp).width(64.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(shape = CircleShape, color = Ink, modifier = Modifier.height(56.dp).width(56.dp)) {
             Box(contentAlignment = Alignment.Center) { Text("✦", color = Purple, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
         Text("Browse beautifully.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
         Text("Fast, calm, and ready for the web.", color = Color(0xFF6B7280), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-        Spacer(Modifier.height(20.dp))
-        Card(colors = CardDefaults.cardColors(containerColor = SoftPurple), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(15.dp)) {
+        Spacer(Modifier.height(14.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = SoftPurple), shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(13.dp)) {
                 Text("Quick start", color = Purple, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
                 Text("Use the search bar above to find anything online.", color = Ink, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 5.dp))
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             QuickLink("Wikipedia", "https://wikipedia.org", onNavigate)
             QuickLink("YouTube", "https://youtube.com", onNavigate)
@@ -289,7 +289,7 @@ private fun CompactStartPage(onNavigate: (String) -> Unit) {
 
 @Composable
 private fun QuickLink(label: String, url: String, onNavigate: (String) -> Unit) {
-    Button(onClick = { onNavigate(url) }, colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Ink), shape = RoundedCornerShape(12.dp), contentPadding = ButtonDefaults.ContentPadding) {
+    Button(onClick = { onNavigate(url) }, colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Ink), shape = RoundedCornerShape(16.dp), contentPadding = ButtonDefaults.ContentPadding) {
         Text(label, style = MaterialTheme.typography.labelMedium)
     }
 }
@@ -322,7 +322,7 @@ private fun SettingsDialog(darkMode: Boolean, engine: String, onDarkModeChanged:
 
 @Composable
 private fun BrowserNavigationBar(webView: WebView?, currentUrl: String, onHome: () -> Unit, onClose: () -> Unit) {
-    Surface(color = Color.White, shadowElevation = 8.dp, modifier = Modifier.navigationBarsPadding()) {
+    Surface(color = Color.White, shadowElevation = 5.dp, modifier = Modifier.navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { webView?.goBack() }, enabled = webView?.canGoBack() == true) { Icon(Icons.Default.ArrowBack, "Back", tint = if (webView?.canGoBack() == true) Ink else Color.LightGray) }
             IconButton(onClick = { webView?.goForward() }, enabled = webView?.canGoForward() == true) { Icon(Icons.Default.ArrowForward, "Forward", tint = if (webView?.canGoForward() == true) Ink else Color.LightGray) }
