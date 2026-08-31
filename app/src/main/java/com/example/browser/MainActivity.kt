@@ -174,8 +174,14 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
     var showSettings by remember { mutableStateOf(false) }
     var showTabs by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
+    var canGoBack by remember { mutableStateOf(false) }
+    var canGoForward by remember { mutableStateOf(false) }
 
     fun persistTabs() = saveTabs(prefs, tabs)
+    fun refreshNavigationState(view: WebView? = webView) {
+        canGoBack = view?.canGoBack() == true
+        canGoForward = view?.canGoForward() == true
+    }
     fun updateCurrentTab(url: String, title: String = "") {
         val now = System.currentTimeMillis()
         tabs = tabs.map { if (it.id == selectedTabId) it.copy(url = url, title = title.ifBlank { it.title }, lastActive = now, inactive = false) else it }
@@ -232,7 +238,11 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
             BrowserNavigationBar(
                 webView = webView,
                 tabCount = tabs.size,
-                onHome = { webView?.stopLoading(); currentUrl = ""; address = ""; updateCurrentTab("") },
+                canGoBack = canGoBack,
+                canGoForward = canGoForward,
+                onBack = { webView?.goBack(); refreshNavigationState() },
+                onForward = { webView?.goForward(); refreshNavigationState() },
+                onHome = { webView?.stopLoading(); currentUrl = ""; address = ""; canGoBack = false; canGoForward = false; updateCurrentTab("") },
                 onTabs = { showTabs = true }
             )
         }
@@ -301,12 +311,14 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
                                     currentUrl = url
                                     address = compactUrl(url)
                                     updateCurrentTab(url)
+                                    refreshNavigationState(view)
                                 }
                                 override fun onPageFinished(view: WebView, url: String) {
                                     isLoading = false
                                     currentUrl = url
                                     address = compactUrl(url)
                                     updateCurrentTab(url)
+                                    refreshNavigationState(view)
                                 }
                             }
                             webChromeClient = WebChromeClient()
@@ -317,6 +329,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
                     },
                     update = { view ->
                         webView = view
+                        refreshNavigationState(view)
                         if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) WebSettingsCompat.setForceDark(view.settings, if (darkMode) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF)
                         if (view.url != currentUrl && currentUrl.isNotEmpty()) view.loadUrl(currentUrl)
                     }
@@ -431,11 +444,11 @@ private fun TabOverviewDialog(tabs: List<BrowserTab>, selectedTabId: Long, onSel
 }
 
 @Composable
-private fun BrowserNavigationBar(webView: WebView?, tabCount: Int, onHome: () -> Unit, onTabs: () -> Unit) {
+private fun BrowserNavigationBar(webView: WebView?, tabCount: Int, canGoBack: Boolean, canGoForward: Boolean, onBack: () -> Unit, onForward: () -> Unit, onHome: () -> Unit, onTabs: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 5.dp, modifier = Modifier.navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { webView?.goBack() }, enabled = webView?.canGoBack() == true) { Icon(Icons.Default.ArrowBack, "Back", tint = if (webView?.canGoBack() == true) Ink else Color.LightGray) }
-            IconButton(onClick = { webView?.goForward() }, enabled = webView?.canGoForward() == true) { Icon(Icons.Default.ArrowForward, "Forward", tint = if (webView?.canGoForward() == true) Ink else Color.LightGray) }
+            IconButton(onClick = onBack, enabled = canGoBack) { Icon(Icons.Default.ArrowBack, "Back", tint = if (canGoBack) Ink else Color.LightGray) }
+            IconButton(onClick = onForward, enabled = canGoForward) { Icon(Icons.Default.ArrowForward, "Forward", tint = if (canGoForward) Ink else Color.LightGray) }
             IconButton(onClick = onHome) { Icon(Icons.Default.Home, "Home", tint = Purple) }
             IconButton(onClick = { webView?.reload() }) { Icon(Icons.Default.Refresh, "Refresh", tint = Ink) }
             Box {
