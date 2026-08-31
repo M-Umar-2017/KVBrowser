@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
@@ -49,6 +50,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -86,36 +88,56 @@ private fun compactUrl(raw: String): String {
 
 private fun normalizeInput(input: String): String = input.trim().replace(Regex("\\s*\\.\\s*"), ".")
 
+private val engines = listOf("Bing", "Google", "DuckDuckGo", "Yahoo", "Yandex", "Ecosia", "Baidu")
+
+private fun searchUrl(engine: String, query: String): String {
+    val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+    return when (engine) {
+        "Bing" -> "https://www.bing.com/search?q=$encoded"
+        "Google" -> "https://www.google.com/search?q=$encoded"
+        "Yahoo" -> "https://search.yahoo.com/search?p=$encoded"
+        "Yandex" -> "https://yandex.com/search/?text=$encoded"
+        "Ecosia" -> "https://www.ecosia.org/search?q=$encoded"
+        "Baidu" -> "https://www.baidu.com/s?wd=$encoded"
+        else -> "https://html.duckduckgo.com/html/?q=$encoded"
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { BrowserTheme { BrowserApp() } }
+        setContent { BrowserRoot() }
     }
 }
 
 @Composable
-private fun BrowserTheme(content: @Composable () -> Unit) {
+private fun BrowserRoot() {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("browser_settings", android.content.Context.MODE_PRIVATE) }
+    var darkMode by remember { mutableStateOf(prefs.getBoolean("dark_mode", false)) }
+    var engine by remember { mutableStateOf(prefs.getString("engine", "DuckDuckGo") ?: "DuckDuckGo") }
+    BrowserTheme(darkMode) {
+        BrowserApp(engine, darkMode, { value -> darkMode = value; prefs.edit().putBoolean("dark_mode", value).apply() }, { value -> engine = value; prefs.edit().putString("engine", value).apply() })
+    }
+}
+
+@Composable
+private fun BrowserTheme(darkMode: Boolean, content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = androidx.compose.material3.lightColorScheme(
-            primary = Purple,
-            onPrimary = Color.White,
-            background = Page,
-            surface = Color.White,
-            onSurface = Ink,
-            onBackground = Ink
-        ),
+        colorScheme = if (darkMode) androidx.compose.material3.darkColorScheme(primary = Color(0xFFB9A7FF), background = Color(0xFF101116), surface = Color(0xFF1B1C22), onSurface = Color.White, onBackground = Color.White) else androidx.compose.material3.lightColorScheme(primary = Purple, onPrimary = Color.White, background = Page, surface = Color.White, onSurface = Ink, onBackground = Ink),
         content = content
     )
 }
 
 @Composable
-private fun BrowserApp() {
+private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Boolean) -> Unit, onEngineChanged: (String) -> Unit) {
     val context = LocalContext.current
     var address by remember { mutableStateOf("") }
     var currentUrl by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
 
     fun navigate(input: String) {
@@ -124,7 +146,7 @@ private fun BrowserApp() {
         val target = when {
             value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true) -> value
             value.contains(".") && !value.contains(" ") -> "https://$value"
-            else -> "https://html.duckduckgo.com/html/?q=" + java.net.URLEncoder.encode(value, "UTF-8")
+            else -> searchUrl(engine, value)
         }
         currentUrl = target
         address = compactUrl(target)
@@ -175,6 +197,7 @@ private fun BrowserApp() {
                             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Address", currentUrl))
                         })
+                        DropdownMenuItem(text = { Text("Settings") }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { showMenu = false; showSettings = true })
                         DropdownMenuItem(text = { Text("About") }, leadingIcon = { Icon(Icons.Default.Shield, null) }, onClick = { showMenu = false; showAbout = true })
                     }
                 }
@@ -226,6 +249,10 @@ private fun BrowserApp() {
         }
     }
 
+    if (showSettings) {
+        SettingsDialog(darkMode, engine, onDarkModeChanged, onEngineChanged) { showSettings = false }
+    }
+
     if (showAbout) {
         AlertDialog(
             onDismissRequest = { showAbout = false },
@@ -265,6 +292,32 @@ private fun QuickLink(label: String, url: String, onNavigate: (String) -> Unit) 
     Button(onClick = { onNavigate(url) }, colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Ink), shape = RoundedCornerShape(12.dp), contentPadding = ButtonDefaults.ContentPadding) {
         Text(label, style = MaterialTheme.typography.labelMedium)
     }
+}
+
+@Composable
+private fun SettingsDialog(darkMode: Boolean, engine: String, onDarkModeChanged: (Boolean) -> Unit, onEngineChanged: (String) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Settings") },
+        text = {
+            Column {
+                Text("Appearance", fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(if (darkMode) "Dark mode" else "Light mode")
+                    androidx.compose.material3.Switch(checked = darkMode, onCheckedChange = onDarkModeChanged)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Search engine", fontWeight = FontWeight.Bold)
+                engines.forEach { option ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = engine == option, onClick = { onEngineChanged(option) })
+                        Text(option)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } }
+    )
 }
 
 @Composable
