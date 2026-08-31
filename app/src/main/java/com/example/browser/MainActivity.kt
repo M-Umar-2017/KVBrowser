@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -154,7 +155,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
     }
 
     Scaffold(
-        modifier = Modifier.fillMaxSize().background(Page),
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         bottomBar = {
             BrowserNavigationBar(
                 webView = webView,
@@ -172,7 +173,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
                 OutlinedTextField(
                     value = address,
                     onValueChange = { address = it },
-                    modifier = Modifier.weight(1f).height(46.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 50.dp, max = 54.dp),
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium,
                     leadingIcon = { Icon(Icons.Default.Search, "Search", tint = Purple) },
@@ -185,7 +186,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
                     keyboardActions = KeyboardActions(onGo = { navigate(address) })
                 )
                 Box {
-                    IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, "More", tint = Ink) }
+                    IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, "More", tint = MaterialTheme.colorScheme.onSurface) }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         DropdownMenuItem(text = { Text("Share page") }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = {
                             showMenu = false
@@ -204,7 +205,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
             }
             if (isLoading) CircularProgressIndicator(Modifier.fillMaxWidth().height(2.dp), color = Purple, strokeWidth = 2.dp)
             if (currentUrl.isEmpty()) {
-                CompactStartPage(onNavigate = ::navigate)
+                CompactStartPage(darkMode = darkMode, onNavigate = ::navigate)
             } else {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
@@ -235,13 +236,14 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
                                 }
                             }
                             webChromeClient = WebChromeClient()
-                            if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) WebSettingsCompat.setForceDark(settings, WebSettingsCompat.FORCE_DARK_OFF)
+                            if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) WebSettingsCompat.setForceDark(settings, if (darkMode) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF)
                             webView = this
                             loadUrl(currentUrl)
                         }
                     },
                     update = { view ->
                         webView = view
+                        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) WebSettingsCompat.setForceDark(view.settings, if (darkMode) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF)
                         if (view.url != currentUrl && currentUrl.isNotEmpty()) view.loadUrl(currentUrl)
                     }
                 )
@@ -264,19 +266,19 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
 }
 
 @Composable
-private fun CompactStartPage(onNavigate: (String) -> Unit) {
+private fun CompactStartPage(darkMode: Boolean, onNavigate: (String) -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(shape = CircleShape, color = Ink, modifier = Modifier.height(56.dp).width(56.dp)) {
             Box(contentAlignment = Alignment.Center) { Text("✦", color = Purple, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
         }
         Spacer(Modifier.height(10.dp))
-        Text("Browse beautifully.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
+        Text("Browse beautifully.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
         Text("Fast, calm, and ready for the web.", color = Color(0xFF6B7280), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
         Spacer(Modifier.height(14.dp))
-        Card(colors = CardDefaults.cardColors(containerColor = SoftPurple), shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+        Card(colors = CardDefaults.cardColors(containerColor = if (darkMode) MaterialTheme.colorScheme.surfaceVariant else SoftPurple), shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(13.dp)) {
                 Text("Quick start", color = Purple, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
-                Text("Use the search bar above to find anything online.", color = Ink, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 5.dp))
+                Text("Use the search bar above to find anything online.", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 5.dp))
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -289,7 +291,7 @@ private fun CompactStartPage(onNavigate: (String) -> Unit) {
 
 @Composable
 private fun QuickLink(label: String, url: String, onNavigate: (String) -> Unit) {
-    Button(onClick = { onNavigate(url) }, colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Ink), shape = RoundedCornerShape(16.dp), contentPadding = ButtonDefaults.ContentPadding) {
+    Button(onClick = { onNavigate(url) }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface), shape = RoundedCornerShape(16.dp), contentPadding = ButtonDefaults.ContentPadding) {
         Text(label, style = MaterialTheme.typography.labelMedium)
     }
 }
@@ -322,7 +324,7 @@ private fun SettingsDialog(darkMode: Boolean, engine: String, onDarkModeChanged:
 
 @Composable
 private fun BrowserNavigationBar(webView: WebView?, currentUrl: String, onHome: () -> Unit, onClose: () -> Unit) {
-    Surface(color = Color.White, shadowElevation = 5.dp, modifier = Modifier.navigationBarsPadding()) {
+    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 5.dp, modifier = Modifier.navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { webView?.goBack() }, enabled = webView?.canGoBack() == true) { Icon(Icons.Default.ArrowBack, "Back", tint = if (webView?.canGoBack() == true) Ink else Color.LightGray) }
             IconButton(onClick = { webView?.goForward() }, enabled = webView?.canGoForward() == true) { Icon(Icons.Default.ArrowForward, "Forward", tint = if (webView?.canGoForward() == true) Ink else Color.LightGray) }
