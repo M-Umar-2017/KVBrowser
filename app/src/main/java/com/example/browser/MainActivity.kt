@@ -165,8 +165,8 @@ private val engines = listOf("Bing", "Google", "DuckDuckGo", "Yahoo", "Yandex", 
 private fun searchUrl(engine: String, query: String): String {
     val encoded = java.net.URLEncoder.encode(query, "UTF-8")
     return when (engine) {
-        "Bing" -> "https://www.bing.com/search?q=$encoded"
-        "Google" -> "https://www.google.com/search?q=$encoded"
+        "Bing" -> "https://www.bing.com/search?q=$encoded&form=QBLH"
+        "Google" -> "https://www.google.com/search?igu=1&q=$encoded"
         "Yahoo" -> "https://search.yahoo.com/search?p=$encoded"
         "Yandex" -> "https://yandex.com/search/?text=$encoded"
         "Ecosia" -> "https://www.ecosia.org/search?q=$encoded"
@@ -379,8 +379,15 @@ private fun BrowserApp(engine: String, darkMode: Boolean, showMostVisited: Boole
                             settings.loadWithOverviewMode = true
                             settings.builtInZoomControls = false
                             settings.displayZoomControls = false
+                            settings.setSupportZoom(false)
                             settings.mediaPlaybackRequiresUserGesture = false
+                            settings.javaScriptCanOpenWindowsAutomatically = false
+                            settings.allowFileAccess = false
+                            settings.allowContentAccess = true
+                            settings.offscreenPreRaster = true
                             settings.setSupportMultipleWindows(false)
+                            settings.textZoom = 100
+                            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
                             webViewClient = object : WebViewClient() {
                                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = false
                                 override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
