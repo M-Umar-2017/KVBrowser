@@ -315,7 +315,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, showMostVisited: Boole
                 canGoForward = canGoForward,
                 onBack = { webView?.goBack(); refreshNavigationState() },
                 onForward = { webView?.goForward(); refreshNavigationState() },
-                onHome = { webView?.stopLoading(); webView?.loadUrl("about:blank"); currentUrl = ""; address = ""; canGoBack = false; canGoForward = false; selectedShortcutId = null; updateCurrentTab("") },
+                onHome = { webView?.stopLoading(); webView = null; currentUrl = ""; address = ""; canGoBack = false; canGoForward = false; selectedShortcutId = null; updateCurrentTab("") },
                 onTabs = { showTabs = true }
             )
         }
@@ -528,19 +528,22 @@ private fun ShortcutManagerDialog(shortcuts: List<HomeShortcut>, selectedId: Lon
         onDismissRequest = onDismiss,
         title = { Text("Manage shortcuts") },
         text = {
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-                items(shortcuts, key = { it.id }) { shortcut ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(38.dp).clickable { onSelect(shortcut.id) }) {
-                            AsyncImage(model = faviconUrl(shortcut.url), contentDescription = shortcut.title, modifier = Modifier.fillMaxSize().padding(7.dp).clip(CircleShape))
-                        }
-                        Text(shortcut.title.ifBlank { compactUrl(shortcut.url) }, maxLines = 1, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
-                        IconButton(onClick = { onMove(shortcut.id, -1) }) { Icon(Icons.Default.ArrowUpward, "Move up") }
-                        IconButton(onClick = { onMove(shortcut.id, 1) }) { Icon(Icons.Default.ArrowDownward, "Move down") }
-                        if (selectedId == shortcut.id) {
-                            TextButton(onClick = { onDelete(shortcut.id) }) { Icon(Icons.Default.Delete, "Remove shortcut"); Spacer(Modifier.width(4.dp)); Text("Remove") }
+            Column {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                    items(shortcuts, key = { it.id }) { shortcut ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (selectedId == shortcut.id) SoftPurple else Color.Transparent).clickable { onSelect(shortcut.id) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(38.dp)) {
+                                AsyncImage(model = faviconUrl(shortcut.url), contentDescription = shortcut.title, modifier = Modifier.fillMaxSize().padding(7.dp).clip(CircleShape))
+                            }
+                            Text(shortcut.title.ifBlank { compactUrl(shortcut.url) }, maxLines = 1, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+                            IconButton(onClick = { onMove(shortcut.id, -1) }) { Icon(Icons.Default.ArrowUpward, "Move up") }
+                            IconButton(onClick = { onMove(shortcut.id, 1) }) { Icon(Icons.Default.ArrowDownward, "Move down") }
                         }
                     }
+                }
+                if (selectedId != null) {
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { onDelete(selectedId) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Delete, "Remove shortcut"); Spacer(Modifier.width(6.dp)); Text("Remove selected shortcut") }
                 }
             }
         },
