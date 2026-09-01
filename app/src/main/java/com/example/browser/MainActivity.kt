@@ -75,6 +75,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -312,7 +313,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, showMostVisited: Boole
                 canGoForward = canGoForward,
                 onBack = { webView?.goBack(); refreshNavigationState() },
                 onForward = { webView?.goForward(); refreshNavigationState() },
-                onHome = { webView?.stopLoading(); currentUrl = ""; address = ""; canGoBack = false; canGoForward = false; updateCurrentTab("") },
+                onHome = { webView?.stopLoading(); webView?.loadUrl("about:blank"); currentUrl = ""; address = ""; canGoBack = false; canGoForward = false; selectedShortcutId = null; updateCurrentTab("") },
                 onTabs = { showTabs = true }
             )
         }
@@ -350,7 +351,6 @@ private fun BrowserApp(engine: String, darkMode: Boolean, showMostVisited: Boole
                             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Address", currentUrl))
                         })
-                        DropdownMenuItem(text = { Text("Add to homepage") }, leadingIcon = { Icon(Icons.Default.Add, null) }, enabled = currentUrl.isNotBlank(), onClick = { showMenu = false; addShortcut(currentUrl, webView?.title ?: compactUrl(currentUrl)) })
                         DropdownMenuItem(text = { Text("Add shortcut") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { showMenu = false; showAddShortcut = true })
                         if (selectedShortcutId != null && currentUrl.isBlank()) DropdownMenuItem(text = { Text("Remove selected shortcut") }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { shortcuts = shortcuts.filterNot { it.id == selectedShortcutId }; selectedShortcutId = null; persistShortcuts(); showMenu = false })
                         DropdownMenuItem(text = { Text("Manage shortcuts") }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { showMenu = false; showManageShortcuts = true })
@@ -363,9 +363,10 @@ private fun BrowserApp(engine: String, darkMode: Boolean, showMostVisited: Boole
             if (currentUrl.isEmpty()) {
                 CompactStartPage(darkMode = darkMode, shortcuts = shortcuts, visits = visits, showMostVisited = showMostVisited, selectedShortcutId = selectedShortcutId, onSelectShortcut = { selectedShortcutId = if (selectedShortcutId == it.id) null else it.id }, onNavigate = ::navigate)
             } else {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
+                key(selectedTabId) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { ctx ->
                         WebView(ctx).apply {
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
@@ -407,8 +408,9 @@ private fun BrowserApp(engine: String, darkMode: Boolean, showMostVisited: Boole
                         refreshNavigationState(view)
                         if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) WebSettingsCompat.setForceDark(view.settings, if (darkMode) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF)
                         if (view.url != currentUrl && currentUrl.isNotEmpty()) view.loadUrl(currentUrl)
-                    }
-                )
+                        }
+                    )
+                }
             }
         }
     }
@@ -417,7 +419,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, showMostVisited: Boole
         SettingsDialog(darkMode, engine, showMostVisited, onDarkModeChanged, onEngineChanged, onMostVisitedChanged) { showSettings = false }
     }
     if (showAddShortcut) {
-        AddShortcutDialog(onAdd = { title, url -> addShortcut(url, title); showAddShortcut = false }, onDismiss = { showAddShortcut = false })
+        AddShortcutDialog(initialUrl = currentUrl, initialTitle = webView?.title ?: "", onAdd = { title, url -> addShortcut(url, title); showAddShortcut = false }, onDismiss = { showAddShortcut = false })
     }
     if (showManageShortcuts) {
         ShortcutManagerDialog(shortcuts, selectedShortcutId, onSelect = { selectedShortcutId = it }, onDelete = { id -> shortcuts = shortcuts.filterNot { it.id == id }; selectedShortcutId = null; persistShortcuts() }, onMove = ::moveShortcut, onDismiss = { showManageShortcuts = false })
@@ -488,9 +490,9 @@ private fun ShortcutIcon(shortcut: HomeShortcut, selected: Boolean, onSelect: (H
 }
 
 @Composable
-private fun AddShortcutDialog(onAdd: (String, String) -> Unit, onDismiss: () -> Unit) {
-    var title by remember { mutableStateOf("") }
-    var url by remember { mutableStateOf("") }
+private fun AddShortcutDialog(initialUrl: String, initialTitle: String, onAdd: (String, String) -> Unit, onDismiss: () -> Unit) {
+    var title by remember(initialTitle) { mutableStateOf(initialTitle) }
+    var url by remember(initialUrl) { mutableStateOf(initialUrl) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add shortcut") },
