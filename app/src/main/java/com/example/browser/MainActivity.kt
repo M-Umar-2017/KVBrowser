@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -71,6 +72,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -359,8 +362,8 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
 @Composable
 private fun CompactStartPage(darkMode: Boolean, onNavigate: (String) -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(shape = CircleShape, color = Ink, modifier = Modifier.height(56.dp).width(56.dp)) {
-            Box(contentAlignment = Alignment.Center) { Text("✦", color = Purple, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
+        Surface(shape = RoundedCornerShape(18.dp), color = Ink, modifier = Modifier.height(72.dp).width(108.dp)) {
+            Image(painter = painterResource(id = R.drawable.kvb_logo), contentDescription = "KVB logo", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
         }
         Spacer(Modifier.height(10.dp))
         Text("Browse beautifully.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
