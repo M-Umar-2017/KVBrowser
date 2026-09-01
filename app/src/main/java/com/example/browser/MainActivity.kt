@@ -449,9 +449,8 @@ private fun CompactStartPage(
     onSelectShortcut: (HomeShortcut) -> Unit,
     onNavigate: (String) -> Unit
 ) {
-    val visibleShortcuts = (shortcuts + if (showMostVisited) visits.sortedByDescending { it.count }.map { HomeShortcut(-it.url.hashCode().toLong(), it.title, it.url) } else emptyList())
-        .distinctBy { it.url }
-        .take(8)
+    val visibleShortcuts = shortcuts.take(8)
+    val visibleMostVisited = if (showMostVisited) visits.sortedByDescending { it.count }.distinctBy { it.url }.take(8) else emptyList()
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(shape = RoundedCornerShape(18.dp), color = Ink, modifier = Modifier.height(72.dp).width(108.dp)) {
             Image(painter = painterResource(id = R.drawable.kvb_logo), contentDescription = "KVB logo", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
@@ -467,12 +466,26 @@ private fun CompactStartPage(
             }
         }
         Spacer(Modifier.height(16.dp))
+        Text("Shortcuts", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+        Spacer(Modifier.height(8.dp))
         if (visibleShortcuts.isEmpty()) {
-            Text("Add shortcuts from the three-dot menu.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Text("Add shortcuts from the three-dot menu.", modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         } else {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                visibleShortcuts.forEach { shortcut ->
-                    ShortcutIcon(shortcut, selectedShortcutId == shortcut.id, onSelectShortcut, onNavigate)
+                visibleShortcuts.forEach { shortcut -> ShortcutIcon(shortcut, selectedShortcutId == shortcut.id, onSelectShortcut, onNavigate) }
+            }
+        }
+        if (showMostVisited) {
+            Spacer(Modifier.height(18.dp))
+            Text("Most visited", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Spacer(Modifier.height(8.dp))
+            if (visibleMostVisited.isEmpty()) {
+                Text("Your frequently visited sites will appear here.", modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            } else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    visibleMostVisited.forEach { visit ->
+                        ShortcutIcon(HomeShortcut(-visit.url.hashCode().toLong(), visit.title, visit.url), false, {}, onNavigate)
+                    }
                 }
             }
         }
