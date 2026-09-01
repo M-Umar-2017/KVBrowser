@@ -97,6 +97,7 @@ private val Purple = Color(0xFF7057E8)
 private val SoftPurple = Color(0xFFEDEAFF)
 private val Page = Color(0xFFF6F7FB)
 private const val TabExpiryMs = 24L * 60L * 60L * 1000L
+private const val MostVisitedExpiryMs = 60L * 60L * 1000L
 
 data class BrowserTab(val id: Long, val url: String, val title: String, val lastActive: Long, val inactive: Boolean)
 data class HomeShortcut(val id: Long, val title: String, val url: String)
@@ -134,8 +135,9 @@ private fun saveShortcuts(prefs: SharedPreferences, shortcuts: List<HomeShortcut
 }
 
 private fun loadVisits(prefs: SharedPreferences): List<VisitEntry> {
+    val now = System.currentTimeMillis()
     val stored = runCatching { JSONArray(prefs.getString("visits", "[]")) }.getOrElse { JSONArray() }
-    return (0 until stored.length()).mapNotNull { index -> runCatching { val item = stored.getJSONObject(index); VisitEntry(item.optString("url"), item.optString("title"), item.optInt("count", 1), item.optLong("lastVisited")) }.getOrNull() }
+    return (0 until stored.length()).mapNotNull { index -> runCatching { val item = stored.getJSONObject(index); VisitEntry(item.optString("url"), item.optString("title"), item.optInt("count", 1), item.optLong("lastVisited")) }.getOrNull() }.filter { now - it.lastVisited < MostVisitedExpiryMs }
 }
 
 private fun saveVisits(prefs: SharedPreferences, visits: List<VisitEntry>) {
@@ -450,7 +452,7 @@ private fun CompactStartPage(
     onNavigate: (String) -> Unit
 ) {
     val visibleShortcuts = shortcuts.take(8)
-    val visibleMostVisited = if (showMostVisited) visits.sortedByDescending { it.count }.distinctBy { it.url }.take(8) else emptyList()
+    val visibleMostVisited = if (showMostVisited) visits.filter { it.count > 3 }.sortedByDescending { it.count }.distinctBy { it.url }.take(5) else emptyList()
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(shape = RoundedCornerShape(18.dp), color = Ink, modifier = Modifier.height(72.dp).width(108.dp)) {
             Image(painter = painterResource(id = R.drawable.kvb_logo), contentDescription = "KVB logo", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
@@ -535,7 +537,9 @@ private fun ShortcutManagerDialog(shortcuts: List<HomeShortcut>, selectedId: Lon
                         Text(shortcut.title.ifBlank { compactUrl(shortcut.url) }, maxLines = 1, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
                         IconButton(onClick = { onMove(shortcut.id, -1) }) { Icon(Icons.Default.ArrowUpward, "Move up") }
                         IconButton(onClick = { onMove(shortcut.id, 1) }) { Icon(Icons.Default.ArrowDownward, "Move down") }
-                        if (selectedId == shortcut.id) IconButton(onClick = { onDelete(shortcut.id) }) { Icon(Icons.Default.Delete, "Remove shortcut") }
+                        if (selectedId == shortcut.id) {
+                            TextButton(onClick = { onDelete(shortcut.id) }) { Icon(Icons.Default.Delete, "Remove shortcut"); Spacer(Modifier.width(4.dp)); Text("Remove") }
+                        }
                     }
                 }
             }
