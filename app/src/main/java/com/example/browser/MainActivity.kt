@@ -11,6 +11,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import coil.compose.AsyncImage
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -26,16 +27,23 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Home
@@ -47,6 +55,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -89,6 +98,8 @@ private val Page = Color(0xFFF6F7FB)
 private const val TabExpiryMs = 24L * 60L * 60L * 1000L
 
 data class BrowserTab(val id: Long, val url: String, val title: String, val lastActive: Long, val inactive: Boolean)
+data class HomeShortcut(val id: Long, val title: String, val url: String)
+data class VisitEntry(val url: String, val title: String, val count: Int, val lastVisited: Long)
 
 private fun loadTabs(prefs: SharedPreferences): List<BrowserTab> {
     val now = System.currentTimeMillis()
@@ -109,6 +120,30 @@ private fun saveTabs(prefs: SharedPreferences, tabs: List<BrowserTab>) {
     }
     prefs.edit().putString("tabs", array.toString()).apply()
 }
+
+private fun loadShortcuts(prefs: SharedPreferences): List<HomeShortcut> {
+    val stored = runCatching { JSONArray(prefs.getString("shortcuts", "[]")) }.getOrElse { JSONArray() }
+    return (0 until stored.length()).mapNotNull { index -> runCatching { val item = stored.getJSONObject(index); HomeShortcut(item.getLong("id"), item.optString("title"), item.optString("url")) }.getOrNull() }
+}
+
+private fun saveShortcuts(prefs: SharedPreferences, shortcuts: List<HomeShortcut>) {
+    val array = JSONArray()
+    shortcuts.forEach { shortcut -> array.put(JSONObject().apply { put("id", shortcut.id); put("title", shortcut.title); put("url", shortcut.url) }) }
+    prefs.edit().putString("shortcuts", array.toString()).apply()
+}
+
+private fun loadVisits(prefs: SharedPreferences): List<VisitEntry> {
+    val stored = runCatching { JSONArray(prefs.getString("visits", "[]")) }.getOrElse { JSONArray() }
+    return (0 until stored.length()).mapNotNull { index -> runCatching { val item = stored.getJSONObject(index); VisitEntry(item.optString("url"), item.optString("title"), item.optInt("count", 1), item.optLong("lastVisited")) }.getOrNull() }
+}
+
+private fun saveVisits(prefs: SharedPreferences, visits: List<VisitEntry>) {
+    val array = JSONArray()
+    visits.forEach { visit -> array.put(JSONObject().apply { put("url", visit.url); put("title", visit.title); put("count", visit.count); put("lastVisited", visit.lastVisited) }) }
+    prefs.edit().putString("visits", array.toString()).apply()
+}
+
+private fun faviconUrl(url: String): String = runCatching { "https://www.google.com/s2/favicons?domain=${Uri.parse(url).host}&sz=96" }.getOrDefault("")
 
 private fun compactUrl(raw: String): String {
     val value = raw.trim()
@@ -150,8 +185,9 @@ private fun BrowserRoot() {
     val prefs = remember { context.getSharedPreferences("browser_settings", android.content.Context.MODE_PRIVATE) }
     var darkMode by remember { mutableStateOf(prefs.getBoolean("dark_mode", false)) }
     var engine by remember { mutableStateOf(prefs.getString("engine", "DuckDuckGo") ?: "DuckDuckGo") }
+    var showMostVisited by remember { mutableStateOf(prefs.getBoolean("show_most_visited", true)) }
     BrowserTheme(darkMode) {
-        BrowserApp(engine, darkMode, { value -> darkMode = value; prefs.edit().putBoolean("dark_mode", value).apply() }, { value -> engine = value; prefs.edit().putString("engine", value).apply() })
+        BrowserApp(engine, darkMode, showMostVisited, { value -> darkMode = value; prefs.edit().putBoolean("dark_mode", value).apply() }, { value -> engine = value; prefs.edit().putString("engine", value).apply() }, { value -> showMostVisited = value; prefs.edit().putBoolean("show_most_visited", value).apply() })
     }
 }
 
@@ -164,10 +200,15 @@ private fun BrowserTheme(darkMode: Boolean, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Boolean) -> Unit, onEngineChanged: (String) -> Unit) {
+private fun BrowserApp(engine: String, darkMode: Boolean, showMostVisited: Boolean, onDarkModeChanged: (Boolean) -> Unit, onEngineChanged: (String) -> Unit, onMostVisitedChanged: (Boolean) -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("browser_settings", android.content.Context.MODE_PRIVATE) }
     var tabs by remember { mutableStateOf(loadTabs(prefs).ifEmpty { listOf(BrowserTab(System.currentTimeMillis(), "", "New tab", System.currentTimeMillis(), false)) }) }
+    var shortcuts by remember { mutableStateOf(loadShortcuts(prefs)) }
+    var visits by remember { mutableStateOf(loadVisits(prefs)) }
+    var selectedShortcutId by remember { mutableStateOf<Long?>(null) }
+    var showAddShortcut by remember { mutableStateOf(false) }
+    var showManageShortcuts by remember { mutableStateOf(false) }
     var selectedTabId by remember { mutableStateOf(tabs.first().id) }
     var address by remember { mutableStateOf(tabs.first().url.takeIf { it.isNotEmpty() }?.let(::compactUrl) ?: "") }
     var currentUrl by remember { mutableStateOf(tabs.first().url) }
@@ -181,6 +222,32 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
     var canGoForward by remember { mutableStateOf(false) }
 
     fun persistTabs() = saveTabs(prefs, tabs)
+    fun persistShortcuts() = saveShortcuts(prefs, shortcuts)
+    fun addShortcut(url: String, title: String = "") {
+        val normalized = normalizeInput(url)
+        if (normalized.isBlank()) return
+        val target = if (normalized.startsWith("http://", true) || normalized.startsWith("https://", true)) normalized else "https://$normalized"
+        if (shortcuts.none { it.url.equals(target, true) }) {
+            shortcuts = shortcuts + HomeShortcut(System.currentTimeMillis(), title.ifBlank { Uri.parse(target).host ?: compactUrl(target) }, target)
+            persistShortcuts()
+        }
+    }
+    fun moveShortcut(id: Long, direction: Int) {
+        val index = shortcuts.indexOfFirst { it.id == id }
+        val target = index + direction
+        if (index >= 0 && target in shortcuts.indices) {
+            val updated = shortcuts.toMutableList().apply { add(target, removeAt(index)) }
+            shortcuts = updated
+            persistShortcuts()
+        }
+    }
+    fun recordVisit(url: String, title: String) {
+        if (url.isBlank()) return
+        val now = System.currentTimeMillis()
+        val existing = visits.firstOrNull { it.url == url }
+        visits = if (existing == null) visits + VisitEntry(url, title, 1, now) else visits.map { if (it.url == url) it.copy(title = title.ifBlank { it.title }, count = it.count + 1, lastVisited = now) else it }
+        saveVisits(prefs, visits)
+    }
     fun refreshNavigationState(view: WebView? = webView) {
         canGoBack = view?.canGoBack() == true
         canGoForward = view?.canGoForward() == true
@@ -283,6 +350,10 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
                             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Address", currentUrl))
                         })
+                        DropdownMenuItem(text = { Text("Add to homepage") }, leadingIcon = { Icon(Icons.Default.Add, null) }, enabled = currentUrl.isNotBlank(), onClick = { showMenu = false; addShortcut(currentUrl, webView?.title ?: compactUrl(currentUrl)) })
+                        DropdownMenuItem(text = { Text("Add shortcut") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { showMenu = false; showAddShortcut = true })
+                        if (selectedShortcutId != null && currentUrl.isBlank()) DropdownMenuItem(text = { Text("Remove selected shortcut") }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { shortcuts = shortcuts.filterNot { it.id == selectedShortcutId }; selectedShortcutId = null; persistShortcuts(); showMenu = false })
+                        DropdownMenuItem(text = { Text("Manage shortcuts") }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { showMenu = false; showManageShortcuts = true })
                         DropdownMenuItem(text = { Text("Settings") }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { showMenu = false; showSettings = true })
                         DropdownMenuItem(text = { Text("About") }, leadingIcon = { Icon(Icons.Default.Shield, null) }, onClick = { showMenu = false; showAbout = true })
                     }
@@ -290,7 +361,7 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
             }
             if (isLoading) CircularProgressIndicator(Modifier.fillMaxWidth().height(2.dp), color = Purple, strokeWidth = 2.dp)
             if (currentUrl.isEmpty()) {
-                CompactStartPage(darkMode = darkMode, onNavigate = ::navigate)
+                CompactStartPage(darkMode = darkMode, shortcuts = shortcuts, visits = visits, showMostVisited = showMostVisited, selectedShortcutId = selectedShortcutId, onSelectShortcut = { selectedShortcutId = if (selectedShortcutId == it.id) null else it.id }, onNavigate = ::navigate)
             } else {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
@@ -320,7 +391,8 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
                                     isLoading = false
                                     currentUrl = url
                                     address = compactUrl(url)
-                                    updateCurrentTab(url)
+                                    updateCurrentTab(url, view.title ?: "")
+                                    recordVisit(url, view.title ?: compactUrl(url))
                                     refreshNavigationState(view)
                                 }
                             }
@@ -342,7 +414,13 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
     }
 
     if (showSettings) {
-        SettingsDialog(darkMode, engine, onDarkModeChanged, onEngineChanged) { showSettings = false }
+        SettingsDialog(darkMode, engine, showMostVisited, onDarkModeChanged, onEngineChanged, onMostVisitedChanged) { showSettings = false }
+    }
+    if (showAddShortcut) {
+        AddShortcutDialog(onAdd = { title, url -> addShortcut(url, title); showAddShortcut = false }, onDismiss = { showAddShortcut = false })
+    }
+    if (showManageShortcuts) {
+        ShortcutManagerDialog(shortcuts, selectedShortcutId, onSelect = { selectedShortcutId = it }, onDelete = { id -> shortcuts = shortcuts.filterNot { it.id == id }; selectedShortcutId = null; persistShortcuts() }, onMove = ::moveShortcut, onDismiss = { showManageShortcuts = false })
     }
 
     if (showTabs) {
@@ -360,14 +438,25 @@ private fun BrowserApp(engine: String, darkMode: Boolean, onDarkModeChanged: (Bo
 }
 
 @Composable
-private fun CompactStartPage(darkMode: Boolean, onNavigate: (String) -> Unit) {
+private fun CompactStartPage(
+    darkMode: Boolean,
+    shortcuts: List<HomeShortcut>,
+    visits: List<VisitEntry>,
+    showMostVisited: Boolean,
+    selectedShortcutId: Long?,
+    onSelectShortcut: (HomeShortcut) -> Unit,
+    onNavigate: (String) -> Unit
+) {
+    val visibleShortcuts = (shortcuts + if (showMostVisited) visits.sortedByDescending { it.count }.map { HomeShortcut(-it.url.hashCode().toLong(), it.title, it.url) } else emptyList())
+        .distinctBy { it.url }
+        .take(8)
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(shape = RoundedCornerShape(18.dp), color = Ink, modifier = Modifier.height(72.dp).width(108.dp)) {
             Image(painter = painterResource(id = R.drawable.kvb_logo), contentDescription = "KVB logo", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
         }
         Spacer(Modifier.height(10.dp))
         Text("Browse beautifully.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-        Text("Fast, calm, and ready for the web.", color = Color(0xFF6B7280), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+        Text("Fast, calm, and ready for the web.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
         Spacer(Modifier.height(14.dp))
         Card(colors = CardDefaults.cardColors(containerColor = if (darkMode) MaterialTheme.colorScheme.surfaceVariant else SoftPurple), shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(13.dp)) {
@@ -375,23 +464,73 @@ private fun CompactStartPage(darkMode: Boolean, onNavigate: (String) -> Unit) {
                 Text("Use the search bar above to find anything online.", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 5.dp))
             }
         }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            QuickLink("Wikipedia", "https://wikipedia.org", onNavigate)
-            QuickLink("YouTube", "https://youtube.com", onNavigate)
+        Spacer(Modifier.height(16.dp))
+        if (visibleShortcuts.isEmpty()) {
+            Text("Add shortcuts from the three-dot menu.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                visibleShortcuts.forEach { shortcut ->
+                    ShortcutIcon(shortcut, selectedShortcutId == shortcut.id, onSelectShortcut, onNavigate)
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun QuickLink(label: String, url: String, onNavigate: (String) -> Unit) {
-    Button(onClick = { onNavigate(url) }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface), shape = RoundedCornerShape(16.dp), contentPadding = ButtonDefaults.ContentPadding) {
-        Text(label, style = MaterialTheme.typography.labelMedium)
+private fun ShortcutIcon(shortcut: HomeShortcut, selected: Boolean, onSelect: (HomeShortcut) -> Unit, onNavigate: (String) -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(58.dp)) {
+        Surface(shape = CircleShape, color = if (selected) SoftPurple else MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(50.dp).clickable { if (selected) onNavigate(shortcut.url) else onSelect(shortcut) }) {
+            AsyncImage(model = faviconUrl(shortcut.url), contentDescription = shortcut.title, modifier = Modifier.fillMaxSize().padding(8.dp).clip(CircleShape))
+        }
+        Text(shortcut.title.ifBlank { compactUrl(shortcut.url) }, style = MaterialTheme.typography.labelSmall, maxLines = 1, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
 @Composable
-private fun SettingsDialog(darkMode: Boolean, engine: String, onDarkModeChanged: (Boolean) -> Unit, onEngineChanged: (String) -> Unit, onDismiss: () -> Unit) {
+private fun AddShortcutDialog(onAdd: (String, String) -> Unit, onDismiss: () -> Unit) {
+    var title by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add shortcut") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true, label = { Text("Name") }, placeholder = { Text("YouTube") })
+                OutlinedTextField(value = url, onValueChange = { url = it }, singleLine = true, label = { Text("URL") }, placeholder = { Text("youtube.com") })
+            }
+        },
+        confirmButton = { TextButton(enabled = url.isNotBlank(), onClick = { onAdd(title, url) }) { Text("Add") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun ShortcutManagerDialog(shortcuts: List<HomeShortcut>, selectedId: Long?, onSelect: (Long) -> Unit, onDelete: (Long) -> Unit, onMove: (Long, Int) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Manage shortcuts") },
+        text = {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                items(shortcuts, key = { it.id }) { shortcut ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(38.dp).clickable { onSelect(shortcut.id) }) {
+                            AsyncImage(model = faviconUrl(shortcut.url), contentDescription = shortcut.title, modifier = Modifier.fillMaxSize().padding(7.dp).clip(CircleShape))
+                        }
+                        Text(shortcut.title.ifBlank { compactUrl(shortcut.url) }, maxLines = 1, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+                        IconButton(onClick = { onMove(shortcut.id, -1) }) { Icon(Icons.Default.ArrowUpward, "Move up") }
+                        IconButton(onClick = { onMove(shortcut.id, 1) }) { Icon(Icons.Default.ArrowDownward, "Move down") }
+                        if (selectedId == shortcut.id) IconButton(onClick = { onDelete(shortcut.id) }) { Icon(Icons.Default.Delete, "Remove shortcut") }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } }
+    )
+}
+
+@Composable
+private fun SettingsDialog(darkMode: Boolean, engine: String, showMostVisited: Boolean, onDarkModeChanged: (Boolean) -> Unit, onEngineChanged: (String) -> Unit, onMostVisitedChanged: (Boolean) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Settings") },
@@ -401,6 +540,10 @@ private fun SettingsDialog(darkMode: Boolean, engine: String, onDarkModeChanged:
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(if (darkMode) "Dark mode" else "Light mode")
                     androidx.compose.material3.Switch(checked = darkMode, onCheckedChange = onDarkModeChanged)
+                }
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Show most visited sites")
+                    androidx.compose.material3.Switch(checked = showMostVisited, onCheckedChange = onMostVisitedChanged)
                 }
                 Spacer(Modifier.height(8.dp))
                 Text("Search engine", fontWeight = FontWeight.Bold)
