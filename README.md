@@ -24,6 +24,10 @@ The APK is debug-signed for testing. Android may require permission to install a
 
 Open the project in Android Studio with the Android SDK installed, then build the `app` module using the debug configuration. The generated APK is placed under `app/build/outputs/apk/debug/`.
 
+## Contributing
+
+Feel free to fork this repository, open issues, suggest improvements, report bugs, or submit pull requests. Ideas, experiments, documentation updates, and code contributions are welcome.
+
 ## License and responsibility
 
 This project is shared as an experimental software project. Review the source before using it, do not rely on it for sensitive browsing, and keep Android and WebView components updated on the device.
