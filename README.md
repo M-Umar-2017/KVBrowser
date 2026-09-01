@@ -30,4 +30,4 @@ Feel free to fork this repository, open issues, suggest improvements, report bug
 
 ## License and responsibility
 
-This project is shared as an experimental software project. Review the source before using it, do not rely on it for sensitive browsing, and keep Android and WebView components updated on the device.
+KVB is released under the [MIT License](LICENSE). This project is shared as an experimental software project. Review the source before using it, do not rely on it for sensitive browsing, and keep Android and WebView components updated on the device.
